@@ -10,7 +10,8 @@ git clone https://github.com/jaredLunde/survivor-predict.git
 cd survivor-predict
 # Create a .env with your Rapid API key
 echo "RAPID_API_KEY=${RAPID_API_KEY}" >> .env
-# Installs and runs the script
+# Installs the package in a virtual environment
 poetry install
+# Runs the script
 poetry run python -m survivor_predict
 ```
