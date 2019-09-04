@@ -1,5 +1,7 @@
 import os
 import json
+import math
+import click
 import requests
 import numpy as np
 import chalk
@@ -8,12 +10,13 @@ import diskcache as dc
 from datetime import datetime
 from scipy import stats
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
-# z_score(game_odds) * 2
+# z_score(game_odds)
 #   + z_score(strength_of_schedule)
-#   + z_score(inverse_championship_odds)
+#   + z_score(inverse_futuresship_odds) * math.log(17 - week, 10)  # decay function
 
 
 def american_probability(points):
@@ -29,7 +32,7 @@ def fractional_probability(odds):
 
 
 def decimal_probability(odds):
-    return american_probability((odds - 1) *100)
+    return american_probability((odds - 1) * 100)
 
 
 teams = {
@@ -164,43 +167,44 @@ teams = {
 }
 
 # http://www.vegasinsider.com/nfl/odds/futures/
+# TODO: bs4 odds from: https://www.actionnetwork.com/nfl/futures
 super_bowl_odds = {
-    'kc': 5/1,
-    'ne': 6/1,
-    'no': 12/1,
-    'chi': 12/1,
-    'phi': 12/1,
-    'lar': 14/1,
-    'lac': 14/1,
-    'pit': 18/1,
-    'cle': 18/1,
-    'min': 20/1,
-    'gb': 20/1,
-    'dal': 20/1,
-    'sea': 20/1,
-    'jac': 25/1,
-    'atl': 30/1,
-    'bal': 40/1,
-    'oak': 40/1,
-    'sf': 40/1,
-    'hou': 50/1,
-    'car': 50/1,
-    'nyj': 60/1,
-    'ind': 80/1,
-    'ten': 80/1,
-    'den': 80/1,
-    'det': 80/1,
-    'buf': 100/1,
-    'tb': 100/1,
-    'nyg': 200/1,
-    'cin': 200/1,
-    'was': 300/1,
-    'ari': 300/1,
-    'mia': 500/1,
+    'kc': 5 / 1,
+    'ne': 6 / 1,
+    'no': 12 / 1,
+    'chi': 12 / 1,
+    'phi': 12 / 1,
+    'lar': 14 / 1,
+    'lac': 14 / 1,
+    'pit': 18 / 1,
+    'cle': 18 / 1,
+    'min': 20 / 1,
+    'gb': 20 / 1,
+    'dal': 20 / 1,
+    'sea': 20 / 1,
+    'jac': 25 / 1,
+    'atl': 30 / 1,
+    'bal': 40 / 1,
+    'oak': 40 / 1,
+    'sf': 40 / 1,
+    'hou': 50 / 1,
+    'car': 50 / 1,
+    'nyj': 60 / 1,
+    'ind': 80 / 1,
+    'ten': 80 / 1,
+    'den': 80 / 1,
+    'det': 80 / 1,
+    'buf': 100 / 1,
+    'tb': 100 / 1,
+    'nyg': 200 / 1,
+    'cin': 200 / 1,
+    'was': 300 / 1,
+    'ari': 300 / 1,
+    'mia': 500 / 1,
 }
 
 
-def create_matchup(teams, sites):
+def create_teams(teams, sites):
     odds_a = 0
     odds_b = 0
 
@@ -208,11 +212,16 @@ def create_matchup(teams, sites):
         odds_a += site['odds']['h2h'][0]
         odds_b += site['odds']['h2h'][1]
 
-    return {
-        'favorite': team_to_abbr(teams[0] if odds_a < odds_b else teams[1]),
-        'underdog': team_to_abbr(teams[1] if odds_a < odds_b else teams[0]),
-        'probability': decimal_probability((odds_a if odds_a < odds_b else odds_b) / len(sites))
-    }
+    return [
+        {
+            'abbr': team_to_abbr(teams[0]),
+            'probability': decimal_probability(odds_a / len(sites))
+        },
+        {
+            'abbr': team_to_abbr(teams[1]),
+            'probability': decimal_probability(odds_b / len(sites))
+        }
+    ]
 
 
 def team_to_abbr(team):
@@ -232,19 +241,32 @@ def parse_odds(odds_data):
             seen.add(d['teams'][0])
             seen.add(d['teams'][1])
 
-    return [
-        create_matchup(data['teams'], data['sites'])
-        for data in next_odds_data
-    ]
+    out = []
+    for data in next_odds_data:
+        out.extend(create_teams(data['teams'], data['sites']))
+    return out
 
 
+def cache(key):
+    disk_cache = dc.Cache(f'tmp/{key}')
+    key = datetime.now().strftime(f"{key}-%Y-%m-%d-%H").encode()
+
+    def wrapper(fn):
+        def wrapped(*a, **kw):
+            if disk_cache.get(key):
+                return json.loads(disk_cache[key].decode())
+            result = fn(*a, **kw)
+            disk_cache.clear()
+            disk_cache[key] = json.dumps(result).encode()
+            return result
+
+        return wrapped
+
+    return wrapper
+
+
+@cache('game_odds')
 def get_game_odds():
-    cache = dc.Cache('tmp')
-    key = datetime.now().strftime("NFL-%Y-%m-%d-%H").encode()
-
-    if cache.get(key):
-        return json.loads(cache[key].decode())
-
     # Calls Rapid API with your API key
     rapid_response = requests.get(
         'https://odds.p.rapidapi.com/v1/odds',
@@ -259,71 +281,87 @@ def get_game_odds():
         }
     )
 
-    cache.clear()
-    game_odds = rapid_response.json()['data']
-    cache[key] = json.dumps(game_odds).encode()
-    return game_odds
+    return rapid_response.json()['data']
 
 
-if __name__ == '__main__':
+@click.command()
+@click.option("--week", default=1, help="Current week")
+def main(week):
+    print(chalk.blue(f'NFL Week {week}'), '\n')
     game_odds = parse_odds(get_game_odds())
-
     # Strength of remaining schedule
+    # TODO: bs4 this page
+    # https://www.sportsbettingdime.com/nfl/proper-way-to-calculate-strength-of-schedule/
     sos = {
-        'kc': 0.520,
-        'ne': 0.473,
-        'no': 0.488,
-        'chi': 0.520,
-        'phi': 0.477,
-        'lar': 0.473,
-        'lac': 0.502,
-        'pit': 0.496,
-        'cle': 0.484,
-        'min': 0.512,
-        'gb': 0.504,
-        'dal': 0.504,
-        'sea': 0.479,
-        'jac': 0.531,
-        'atl': 0.518,
-        'bal': 0.496,
-        'oak': 0.539,
-        'sf': 0.510,
-        'hou': 0.527,
-        'car': 0.502,
-        'nyj': 0.473,
-        'ind': 0.518,
-        'ten': 0.514,
-        'den': 0.537,
-        'det': 0.496,
-        'buf': 0.480,
-        'tb': 0.508,
-        'nyg': 0.473,
-        'cin': 0.473,
-        'was': 0.469,
-        'ari': 0.508,
-        'mia': 0.500,
+        'kc': 134.5,
+        'ne': 117.5,
+        'no': 132,
+        'chi': 135.5,
+        'phi': 123,
+        'lar': 127.5,
+        'lac': 131,
+        'pit': 127,
+        'cle': 122.5,
+        'min': 133,
+        'gb': 130.5,
+        'dal': 128.5,
+        'sea': 132,
+        'jac': 133.5,
+        'atl': 135.5,
+        'bal': 128,
+        'oak': 136.5,
+        'sf': 130,
+        'hou': 138.5,
+        'car': 134.5,
+        'nyj': 121,
+        'ind': 131,
+        'ten': 135,
+        'den': 138,
+        'det': 131.5,
+        'buf': 123,
+        'tb': 135,
+        'nyg': 124.5,
+        'cin': 127.5,
+        'was': 128.5,
+        'ari': 132.5,
+        'mia': 129.5,
     }
     # sorts matchups by odds
     game_odds = sorted(game_odds, key=lambda v: v['probability'] * -1)
     # creates numpy arrays from matchups, strength of schedule, etc
     game_odds_arr = np.array([matchup['probability'] for matchup in game_odds])
-    sos_arr = np.array([sos[matchup['favorite']] for matchup in game_odds])
-    champion_odds_arr = np.array([
-        1 - fractional_probability(super_bowl_odds[matchup["favorite"]])
+    sos_arr = np.array([sos[matchup['abbr']] for matchup in game_odds])
+    futures_odds_arr = np.array([
+        1 - fractional_probability(super_bowl_odds[matchup["abbr"]])
         for matchup in game_odds
     ])
     # calculates z-scores for each metric
     game_z = stats.zscore(game_odds_arr)
     sos_z = stats.zscore(sos_arr)
-    champion_z = stats.zscore(champion_odds_arr)
+    futures_z = stats.zscore(futures_odds_arr)
     j_score = []
     # calculates the j-score ;-P
-    for i, matchup in enumerate(game_odds):
-        j_score.append((matchup, (game_z[i] * 2) + sos_z[i] + champion_z[i]))
-    # prints the results
-    for i, (matchup, z) in enumerate(sorted(j_score, key=lambda v: v[1] * -1), 1):
-        print(f'[{i}]', chalk.blue(teams[matchup['favorite']]['name']))
-        print(chalk.green(f'  JScore={round(z, 3)}'))
-        print(f'  Game={round(matchup["probability"] * 100, 3)}%')
-        print(f'  Championship={round(fractional_probability(super_bowl_odds[matchup["favorite"]]) * 100, 3)}%')
+    for i, team in enumerate(game_odds):
+        data = {
+            'team': team,
+            'game_score': game_z[i] * math.log(week + 4, 2),
+            'schedule_score': sos_z[i] * math.log(17 - week, 10),
+            'futures_score': futures_z[i] * math.log(17 - week, 10)
+        }
+        j_score.append({
+            **data,
+            'j_score': data['game_score'] + data['futures_score']
+        })
 
+    # prints the results
+    for i, data in enumerate(sorted(j_score, key=lambda v: v['j_score'] * -1)):
+        team = data['team']
+        print(f'[{i + 1}]', chalk.blue(teams[team['abbr']]['name']))
+        print(chalk.green(f'  JScore={round(data["j_score"], 3)}'))
+        print(f'  Game={round(team["probability"] * 100, 3)}% {chalk.yellow(round(data["game_score"], 3))}')
+        print(f'  Schedule={round(sos_arr[i], 3)} {chalk.yellow(round(data["schedule_score"], 3))}')
+        print(f'  Futures={round(fractional_probability(super_bowl_odds[team["abbr"]]) * 100, 3)}% {chalk.yellow(round(data["futures_score"], 3))}')
+
+
+if __name__ == '__main__':
+    main()
