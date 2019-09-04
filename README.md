@@ -12,6 +12,6 @@ cd survivor-predict
 echo "RAPID_API_KEY=${RAPID_API_KEY}" >> .env
 # Installs the package in a virtual environment
 poetry install
-# Runs the script
-poetry run python -m survivor_predict
+# Runs the script as week 1
+poetry run python -m survivor_predict --week 1
 ```

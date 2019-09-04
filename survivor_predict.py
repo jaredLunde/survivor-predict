@@ -345,7 +345,7 @@ def main(week):
         data = {
             'team': team,
             'game_score': game_z[i] * math.log(week + 4, 2),
-            'schedule_score': sos_z[i] * math.log(17 - week, 10),
+            # 'schedule_score': sos_z[i] * math.log(17 - week, 10),
             'futures_score': futures_z[i] * math.log(17 - week, 10)
         }
         j_score.append({
@@ -359,7 +359,7 @@ def main(week):
         print(f'[{i + 1}]', chalk.blue(teams[team['abbr']]['name']))
         print(chalk.green(f'  JScore={round(data["j_score"], 3)}'))
         print(f'  Game={round(team["probability"] * 100, 3)}% {chalk.yellow(round(data["game_score"], 3))}')
-        print(f'  Schedule={round(sos_arr[i], 3)} {chalk.yellow(round(data["schedule_score"], 3))}')
+        # print(f'  Schedule={round(sos_arr[i], 3)} {chalk.yellow(round(data["schedule_score"], 3))}')
         print(f'  Futures={round(fractional_probability(super_bowl_odds[team["abbr"]]) * 100, 3)}% {chalk.yellow(round(data["futures_score"], 3))}')
 
 
