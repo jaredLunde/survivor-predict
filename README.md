@@ -3,7 +3,7 @@ A basic statistical model for picking teams in NFL survivor pools
 
 ## Things you'll need
 - An API key from [Rapid API](https://rapidapi.com/theoddsapi/api/live-sports-odds/endpoints)
-- [Poetry][https://poetry.eustace.io/] for Python dependency management and packaging
+- [Poetry](https://poetry.eustace.io/) for Python dependency management and packaging
 ## Installation
 ```bash
 git clone https://github.com/jaredLunde/survivor-predict.git
