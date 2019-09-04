@@ -1,7 +1,14 @@
+import os
+import json
+import requests
 import numpy as np
 import chalk
 import statistics
+import diskcache as dc
+from datetime import datetime
 from scipy import stats
+from dotenv import load_dotenv
+load_dotenv()
 
 
 # z_score(game_odds) * 2
@@ -19,6 +26,10 @@ def moneyline_probability(points):
 
 def fractional_probability(odds):
     return 1 / (odds + 1)
+
+
+def decimal_probability(odds):
+    return american_probability((odds - 1) *100)
 
 
 teams = {
@@ -189,36 +200,75 @@ super_bowl_odds = {
 }
 
 
-def create_matchup(favorite, underdog, odds):
+def create_matchup(teams, sites):
+    odds_a = 0
+    odds_b = 0
+
+    for site in sites:
+        odds_a += site['odds']['h2h'][0]
+        odds_b += site['odds']['h2h'][1]
+
     return {
-        'favorite': favorite,
-        'underdog': underdog,
-        'odds': moneyline_probability(odds)
+        'favorite': team_to_abbr(teams[0] if odds_a < odds_b else teams[1]),
+        'underdog': team_to_abbr(teams[1] if odds_a < odds_b else teams[0]),
+        'probability': decimal_probability((odds_a if odds_a < odds_b else odds_b) / len(sites))
     }
 
 
-if __name__ == '__main__':
-    # Consensus odds from:
-    # https://www.sportsline.com/nfl/odds/
-    game_odds = [
-        create_matchup('chi', 'gb', -166),
-        create_matchup('min', 'atl', -199),
-        create_matchup('phi', 'was', -437),
-        create_matchup('nyj', 'buf', -162),
-        create_matchup('bal', 'mia', -331),
-        create_matchup('kc', 'jac', -197),
-        create_matchup('cle', 'ten', -245),
-        create_matchup('lar', 'car', -144),
-        create_matchup('sea', 'cin', -445),
-        create_matchup('lac', 'ind', -302),
-        create_matchup('sf', 'tb', -110),
-        create_matchup('det', 'ari', -144),
-        create_matchup('dal', 'nyg', -322),
-        create_matchup('ne', 'pit', -252),
-        create_matchup('no', 'hou', -315),
-        create_matchup('den', 'oak', -113)
+def team_to_abbr(team):
+    for abbr, maybe in teams.items():
+        if team.strip() == f"{maybe['locale']} {maybe['name']}":
+            return abbr
+    raise KeyError(f'Team not found in teams dictionary: {team}')
+
+
+def parse_odds(odds_data):
+    seen = set()
+    next_odds_data = []
+
+    for d in odds_data:
+        if d['sites_count'] > 0 and d['teams'][0] not in seen and d['teams'][1] not in seen:
+            next_odds_data.append(d)
+            seen.add(d['teams'][0])
+            seen.add(d['teams'][1])
+
+    return [
+        create_matchup(data['teams'], data['sites'])
+        for data in next_odds_data
     ]
 
+
+def get_game_odds():
+    cache = dc.Cache('tmp')
+    key = datetime.now().strftime("NFL-%Y-%m-%d-%H").encode()
+
+    if cache.get(key):
+        return json.loads(cache[key].decode())
+
+    # Calls Rapid API with your API key
+    rapid_response = requests.get(
+        'https://odds.p.rapidapi.com/v1/odds',
+        params={
+            'sport': 'americanfootball_nfl',
+            'region': 'us',
+            'mkt': 'h2h'
+        },
+        headers={
+            'X-RapidAPI-Host': 'odds.p.rapidapi.com',
+            'X-RapidAPI-Key': os.getenv('RAPID_API_KEY')
+        }
+    )
+
+    cache.clear()
+    game_odds = rapid_response.json()['data']
+    cache[key] = json.dumps(game_odds).encode()
+    return game_odds
+
+
+if __name__ == '__main__':
+    game_odds = parse_odds(get_game_odds())
+
+    # Strength of remaining schedule
     sos = {
         'kc': 0.520,
         'ne': 0.473,
@@ -253,25 +303,27 @@ if __name__ == '__main__':
         'ari': 0.508,
         'mia': 0.500,
     }
-
-    game_odds = sorted(game_odds, key=lambda v: v['odds'] * -1)
-    game_odds_arr = np.array([matchup['odds'] for matchup in game_odds])
+    # sorts matchups by odds
+    game_odds = sorted(game_odds, key=lambda v: v['probability'] * -1)
+    # creates numpy arrays from matchups, strength of schedule, etc
+    game_odds_arr = np.array([matchup['probability'] for matchup in game_odds])
     sos_arr = np.array([sos[matchup['favorite']] for matchup in game_odds])
     champion_odds_arr = np.array([
         1 - fractional_probability(super_bowl_odds[matchup["favorite"]])
         for matchup in game_odds
     ])
+    # calculates z-scores for each metric
     game_z = stats.zscore(game_odds_arr)
     sos_z = stats.zscore(sos_arr)
     champion_z = stats.zscore(champion_odds_arr)
     j_score = []
-
+    # calculates the j-score ;-P
     for i, matchup in enumerate(game_odds):
         j_score.append((matchup, (game_z[i] * 2) + sos_z[i] + champion_z[i]))
-
+    # prints the results
     for i, (matchup, z) in enumerate(sorted(j_score, key=lambda v: v[1] * -1), 1):
         print(f'[{i}]', chalk.blue(teams[matchup['favorite']]['name']))
         print(chalk.green(f'  JScore={round(z, 3)}'))
-        print(f'  Game={round(matchup["odds"] * 100, 3)}%')
+        print(f'  Game={round(matchup["probability"] * 100, 3)}%')
         print(f'  Championship={round(fractional_probability(super_bowl_odds[matchup["favorite"]]) * 100, 3)}%')
 
