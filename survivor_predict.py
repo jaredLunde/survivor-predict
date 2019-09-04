@@ -189,7 +189,7 @@ super_bowl_odds = {
 }
 
 
-def create_matchup(favorite,underdog, odds):
+def create_matchup(favorite, underdog, odds):
     return {
         'favorite': favorite,
         'underdog': underdog,
