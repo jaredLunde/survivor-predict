@@ -202,21 +202,21 @@ if __name__ == '__main__':
     # https://www.sportsline.com/nfl/odds/
     game_odds = [
         create_matchup('chi', 'gb', -166),
-        create_matchup('min', 'atl', -198),
-        create_matchup('phi', 'was', -439),
+        create_matchup('min', 'atl', -199),
+        create_matchup('phi', 'was', -437),
         create_matchup('nyj', 'buf', -162),
-        create_matchup('bal', 'mia', -322),
-        create_matchup('kc', 'jac', -198),
-        create_matchup('cle', 'ten', -247),
-        create_matchup('lar', 'car', -148),
+        create_matchup('bal', 'mia', -331),
+        create_matchup('kc', 'jac', -197),
+        create_matchup('cle', 'ten', -245),
+        create_matchup('lar', 'car', -144),
         create_matchup('sea', 'cin', -445),
         create_matchup('lac', 'ind', -302),
         create_matchup('sf', 'tb', -110),
         create_matchup('det', 'ari', -144),
-        create_matchup('dal', 'nyg', -310),
-        create_matchup('ne', 'pit', -253),
-        create_matchup('no', 'hou', -317),
-        create_matchup('den', 'oak', -109)
+        create_matchup('dal', 'nyg', -322),
+        create_matchup('ne', 'pit', -252),
+        create_matchup('no', 'hou', -315),
+        create_matchup('den', 'oak', -113)
     ]
 
     sos = {
