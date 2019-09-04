@@ -264,13 +264,12 @@ if __name__ == '__main__':
     game_z = stats.zscore(game_odds_arr)
     sos_z = stats.zscore(sos_arr)
     champion_z = stats.zscore(champion_odds_arr)
-    agg_z = []
-    picks = [] * len(game_odds)
+    j_score = []
 
     for i, matchup in enumerate(game_odds):
-        agg_z.append((matchup, (game_z[i] * 2) + sos_z[i] + champion_z[i]))
+        j_score.append((matchup, (game_z[i] * 2) + sos_z[i] + champion_z[i]))
 
-    for i, (matchup, z) in enumerate(sorted(agg_z, key=lambda v: v[1] * -1), 1):
+    for i, (matchup, z) in enumerate(sorted(j_score, key=lambda v: v[1] * -1), 1):
         print(f'[{i}]', chalk.blue(teams[matchup['favorite']]['name']))
         print(chalk.green(f'  JScore={round(z, 3)}'))
         print(f'  Game={round(matchup["odds"] * 100, 3)}%')
